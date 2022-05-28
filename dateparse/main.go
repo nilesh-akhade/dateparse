@@ -6,123 +6,49 @@ import (
 	"os"
 	"time"
 
-	"github.com/scylladb/termtables"
 	"github.com/araddon/dateparse"
 )
 
-var (
-	timezone = ""
-	datestr  = ""
-)
-
 func main() {
-	flag.StringVar(&timezone, "timezone", "", "Timezone aka `America/Los_Angeles` formatted time-zone")
+	var outputFormat string
+	flag.StringVar(&outputFormat, "o", "millis", "millis/seconds/layout")
 	flag.Parse()
-
 	if len(flag.Args()) == 0 {
-		fmt.Println(`Must pass a time, and optional location:
+		fmt.Print(`dateparse - Program to parse many date-time formats
 
-		./dateparse "2009-08-12T22:15:09.99Z" 
+Examples:
+    dateparse "Mon Jan 2 15:04:05 MST 2006"
+    dateparse "now"
+    dateparse -o seconds "2009-08-12T22:15:09.99Z"
+    dateparse -o millis "18 July 1918"
+    dateparse -o "2006-01-02T15:04:05-0700" "20-JUN-1990 08:03:00"
 
-		./dateparse --timezone="America/Denver" "2017-07-19 03:21:51+00:00"
-		`)
+`)
 		return
 	}
 
-	datestr = flag.Args()[0]
+	var err error
+	var t time.Time
 
-	layout, err := dateparse.ParseFormat(datestr)
-	if err != nil {
-		fatal(err)
-	}
-
-	zonename, _ := time.Now().In(time.Local).Zone()
-	fmt.Printf("\nYour Current time.Local zone is %v\n", zonename)
-	fmt.Printf("\nLayout String: dateparse.ParseFormat() => %v\n", layout)
-	var loc *time.Location
-	if timezone != "" {
-		// NOTE:  This is very, very important to understand
-		// time-parsing in go
-		l, err := time.LoadLocation(timezone)
+	dateStr := flag.Args()[0]
+	if dateStr == "now" {
+		t = time.Now().UTC()
+	} else {
+		// dateStr := "2022-05-12T16:40:32.171Z"
+		t, err = dateparse.ParseAny(dateStr)
 		if err != nil {
 			fatal(err)
 		}
-		loc = l
-		zonename, _ := time.Now().In(l).Zone()
-		fmt.Printf("\nYour Using time.Local set to location=%s %v \n", timezone, zonename)
-	}
-	fmt.Printf("\n")
-
-	table := termtables.CreateTable()
-
-	table.AddHeaders("method", "Zone Source", "Parsed", "Parsed: t.In(time.UTC)")
-
-	parsers := map[string]parser{
-		"ParseAny":    parseAny,
-		"ParseIn":     parseIn,
-		"ParseLocal":  parseLocal,
-		"ParseStrict": parseStrict,
 	}
 
-	for name, parser := range parsers {
-		time.Local = nil
-		table.AddRow(name, "time.Local = nil", parser(datestr, nil, false), parser(datestr, nil, true))
-		if timezone != "" {
-			time.Local = loc
-			table.AddRow(name, "time.Local = timezone arg", parser(datestr, loc, false), parser(datestr, loc, true))
-		}
-		time.Local = time.UTC
-		table.AddRow(name, "time.Local = time.UTC", parser(datestr, time.UTC, false), parser(datestr, time.UTC, true))
+	switch outputFormat {
+	case "millis":
+		fmt.Println(t.UnixMilli())
+	case "seconds":
+		fmt.Println(t.Unix())
+	default:
+		fmt.Println(t.Format(outputFormat))
 	}
-
-	fmt.Println(table.Render())
-}
-
-type parser func(datestr string, loc *time.Location, utc bool) string
-
-func parseLocal(datestr string, loc *time.Location, utc bool) string {
-	time.Local = loc
-	t, err := dateparse.ParseLocal(datestr)
-	if err != nil {
-		return err.Error()
-	}
-	if utc {
-		return t.In(time.UTC).String()
-	}
-	return t.String()
-}
-
-func parseIn(datestr string, loc *time.Location, utc bool) string {
-	t, err := dateparse.ParseIn(datestr, loc)
-	if err != nil {
-		return err.Error()
-	}
-	if utc {
-		return t.In(time.UTC).String()
-	}
-	return t.String()
-}
-
-func parseAny(datestr string, loc *time.Location, utc bool) string {
-	t, err := dateparse.ParseAny(datestr)
-	if err != nil {
-		return err.Error()
-	}
-	if utc {
-		return fmt.Sprintf("%s day=%d", t.In(time.UTC), t.In(time.UTC).Weekday())
-	}
-	return t.String()
-}
-
-func parseStrict(datestr string, loc *time.Location, utc bool) string {
-	t, err := dateparse.ParseStrict(datestr)
-	if err != nil {
-		return err.Error()
-	}
-	if utc {
-		return t.In(time.UTC).String()
-	}
-	return t.String()
 }
 
 func fatal(err error) {
